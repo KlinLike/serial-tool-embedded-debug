@@ -7,27 +7,33 @@ import serial.tools.list_ports
 from pathlib import Path
 from datetime import datetime, timedelta
 from PyQt6.QtWidgets import (QApplication, QMainWindow, QWidget, QVBoxLayout, 
-                             QHBoxLayout, QPushButton, QComboBox, QTextEdit, 
+                             QHBoxLayout, QPushButton, QComboBox, QTextBrowser, 
                              QLabel, QLineEdit, QMessageBox, QFileDialog)
 from PyQt6.QtCore import QThread, pyqtSignal, QObject, QDateTime, QTimer, QUrl
 from PyQt6.QtGui import QFont, QStandardItemModel, QStandardItem, QColor, QDesktopServices
 
-def setup_logging():
-    # ... 此函数不变 ...
+# 【修改点2】setup_logging 函数现在接收 settings 字典
+def setup_logging(settings):
+    """配置日志系统，使用带时间戳的日志名，并根据配置清理旧日志"""
     try:
         if getattr(sys, 'frozen', False): base_path = Path(sys.executable).parent
         else: base_path = Path(__file__).parent
         log_dir = base_path / "serialLog"
         log_dir.mkdir(parents=True, exist_ok=True)
-        cutoff = datetime.now() - timedelta(days=3)
+        
+        # 从配置中获取保留天数，如果获取失败则默认为3天
+        retention_days = settings.get("log_retention_days", 3)
+        cutoff = datetime.now() - timedelta(days=retention_days)
+
         for log_file in log_dir.glob('serial_tool_*.log'):
             try:
                 timestamp_str = log_file.stem.replace('serial_tool_', '')
                 log_time = datetime.strptime(timestamp_str, '%Y-%m-%d_%H-%M')
                 if log_time < cutoff:
-                    log_file.unlink(); print(f"已删除旧日志文件: {log_file.name}")
+                    log_file.unlink(); print(f"已删除超过 {retention_days} 天的旧日志: {log_file.name}")
             except (ValueError, IndexError):
                 print(f"无法解析日志文件名: {log_file.name}"); continue
+        
         timestamp = datetime.now().strftime('%Y-%m-%d_%H-%M')
         log_filename = f"serial_tool_{timestamp}.log"
         log_file_path = log_dir / log_filename
@@ -46,12 +52,18 @@ def setup_logging():
         return logging.getLogger("SerialApp"), None
 
 class SettingsManager:
-    # ... 此类不变 ...
     def __init__(self, filename='config.json'):
         if getattr(sys, 'frozen', False): base_path = Path(sys.executable).parent
         else: base_path = Path(__file__).parent
         self.filename = base_path / filename
-        self.defaults = { "font_size": 12, "default_baud_rate": "1000000", "available_baud_rates": [ "9600", "19200", "38400", "57600", "115200", "1000000", "2000000" ], "default_serial_port": "" }
+        # 【修改点1】新增 log_retention_days 默认配置
+        self.defaults = { 
+            "font_size": 12, 
+            "default_baud_rate": "1000000", 
+            "available_baud_rates": [ "9600", "19200", "38400", "57600", "115200", "1000000", "2000000" ], 
+            "default_serial_port": "",
+            "log_retention_days": 3 
+        }
         self.settings = self._load_or_create_settings()
     def _load_or_create_settings(self):
         try:
@@ -65,15 +77,17 @@ class SettingsManager:
             if is_updated: self._save_settings(settings)
             return settings
         except (FileNotFoundError, json.JSONDecodeError):
-            logger.warning(f"配置文件 '{self.filename}' 未找到或格式错误，将创建并使用默认设置。"); self._save_settings(self.defaults); return self.defaults
+            # logger尚未初始化，这里只能用print
+            print(f"配置文件 '{self.filename}' 未找到或格式错误，将创建并使用默认设置。")
+            self._save_settings(self.defaults); return self.defaults
     def _save_settings(self, settings):
         with open(self.filename, 'w', encoding='utf-8') as f:
             json.dump(settings, f, indent=4)
     def save_setting(self, key, value):
         self.settings[key] = value; self._save_settings(self.settings)
 
+# ... SerialWorker 和 PortScannerWorker 类保持不变 ...
 class SerialWorker(QObject):
-    # ... 此类不变 ...
     data_received = pyqtSignal(str); error_occurred = pyqtSignal(str)
     def __init__(self, serial_instance, logger):
         super().__init__(); self.ser = serial_instance; self.logger = logger; self._is_running = True
@@ -90,11 +104,8 @@ class SerialWorker(QObject):
                 self.logger.error(f"串口读取错误: {e}"); self.error_occurred.emit(f"串口读取错误: {e}"); self._is_running = False
             except Exception as e:
                 self.logger.error(f"未知线程错误: {e}"); self.error_occurred.emit(f"发生未知错误: {e}"); self._is_running = False
-    def stop(self):
-        self._is_running = False
-
+    def stop(self): self._is_running = False
 class PortScannerWorker(QObject):
-    # ... 此类不变 ...
     ports_updated = pyqtSignal(list)
     def __init__(self):
         super().__init__(); self._is_running = True
@@ -102,19 +113,20 @@ class PortScannerWorker(QObject):
         while self._is_running:
             ports = [port.device for port in serial.tools.list_ports.comports()]
             self.ports_updated.emit(ports); QThread.msleep(1000)
-    def stop(self):
-        self._is_running = False
+    def stop(self): self._is_running = False
 
 class SerialApp(QMainWindow):
+    # ... 此类完全不变 ...
     def __init__(self, settings_manager, logger, log_path):
         super().__init__()
         self.settings_manager = settings_manager; self.settings = self.settings_manager.settings
         self.logger = logger; self.log_path = log_path
         self.logger.info("应用程序启动中...")
-        self.setWindowTitle("串口助手 v2.4 (流畅版)")
+        self.setWindowTitle("串口助手 v2.5 (稳定版)")
         self.setGeometry(100, 100, 700, 650); self.log_buffer = []
         self.serial = serial.Serial(); self.worker_thread = None; self.serial_worker = None
         self.target_port = None; self.is_port_intentionally_opened = False; self.current_ports = []
+        self.is_reconnecting = False
         self.initUI(); self.apply_default_port(); self.update_ports_display(self.current_ports)
         self.port_scanner_thread = QThread()
         self.port_scanner_worker = PortScannerWorker()
@@ -126,7 +138,6 @@ class SerialApp(QMainWindow):
             log_path_html = f'--- [系统] 日志文件: <a href="file:///{self.log_path}" style="color: #87CEEB;">{self.log_path}</a> ---'
             self.data_display.append(log_path_html)
         self.logger.info("UI初始化完成。")
-
     def initUI(self):
         central_widget = QWidget(); self.setCentralWidget(central_widget)
         main_layout = QVBoxLayout(central_widget); controls_layout = QHBoxLayout()
@@ -149,10 +160,8 @@ class SerialApp(QMainWindow):
         exclude_layout = QHBoxLayout(); exclude_layout.addWidget(QLabel("实时排除包含:"))
         self.exclude_filter_input = QLineEdit(); self.exclude_filter_input.setPlaceholderText("例如: debug;info (用';'分隔)")
         exclude_layout.addWidget(self.exclude_filter_input); filter_group_layout.addLayout(exclude_layout)
-        main_layout.addLayout(filter_group_layout); self.data_display = QTextEdit()
-        self.data_display.setReadOnly(True)
-        # 【修改点 1】删除此处的报错行
-        # self.data_display.setOpenExternalLinks(True) 
+        main_layout.addLayout(filter_group_layout); self.data_display = QTextBrowser()
+        self.data_display.setReadOnly(True); self.data_display.setOpenExternalLinks(True)
         main_layout.addWidget(self.data_display); history_filter_layout = QHBoxLayout()
         history_filter_layout.addWidget(QLabel("筛选历史记录:"))
         self.history_filter_input = QLineEdit(); self.history_filter_input.setPlaceholderText("在此输入关键字，按'应用'筛选已显示内容...")
@@ -163,11 +172,8 @@ class SerialApp(QMainWindow):
         self.save_all_button = QPushButton("保存全部记录"); actions_layout.addWidget(self.clear_button)
         actions_layout.addWidget(self.save_visible_button); actions_layout.addWidget(self.save_all_button)
         main_layout.addLayout(actions_layout); self.connect_signals()
-        
     def connect_signals(self):
-        self.refresh_button.clicked.connect(lambda: self.on_ports_updated(
-            [port.device for port in serial.tools.list_ports.comports()]
-        ))
+        self.refresh_button.clicked.connect(lambda: self.on_ports_updated([port.device for port in serial.tools.list_ports.comports()]))
         self.toggle_button.toggled.connect(self.toggle_port)
         self.include_filter_input.returnPressed.connect(self.apply_filter_status)
         self.exclude_filter_input.returnPressed.connect(self.apply_filter_status)
@@ -177,16 +183,6 @@ class SerialApp(QMainWindow):
         self.history_filter_input.returnPressed.connect(self.refilter_display)
         self.save_visible_button.clicked.connect(self.save_visible_data)
         self.save_all_button.clicked.connect(self.save_all_data)
-        
-        # 【修改点 2】新增信号连接，用于处理链接点击
-        self.data_display.anchorClicked.connect(self.open_link)
-
-    # 【修改点 3】新增槽函数，用于打开链接
-    def open_link(self, url):
-        """使用系统默认浏览器打开链接"""
-        QDesktopServices.openUrl(url)
-        self.logger.info(f"尝试打开链接: {url.toString()}")
-
     def _attempt_open_port(self):
         self.toggle_button.setText("关闭串口"); self.set_controls_enabled(False)
         port_name = self.target_port; baud_text = self.baud_combo.currentText()
@@ -195,9 +191,7 @@ class SerialApp(QMainWindow):
             if not baud_text.isdigit(): raise ValueError(f"无效的波特率: {baud_text}")
             baud_rate = int(baud_text)
             self.logger.info(f"尝试打开串口 {port_name}，波特率 {baud_rate}...")
-            self.serial.port = port_name; self.serial.baudrate = baud_rate
-            self.serial.bytesize = serial.EIGHTBITS; self.serial.parity = serial.PARITY_NONE
-            self.serial.stopbits = serial.STOPBITS_ONE; self.serial.open()
+            self.serial.port = port_name; self.serial.baudrate = baud_rate; self.serial.bytesize = serial.EIGHTBITS; self.serial.parity = serial.PARITY_NONE; self.serial.stopbits = serial.STOPBITS_ONE; self.serial.open()
             self.logger.info(f"串口 {port_name} 打开成功。")
             self.serial_worker = SerialWorker(self.serial, self.logger); self.worker_thread = QThread()
             self.serial_worker.moveToThread(self.worker_thread); self.worker_thread.finished.connect(self.on_thread_finished)
@@ -205,8 +199,6 @@ class SerialApp(QMainWindow):
             self.worker_thread.started.connect(self.serial_worker.run); self.worker_thread.start()
         except Exception as e:
             self.logger.error(f"打开串口 {port_name} 失败: {e}"); self.on_serial_error(f"无法打开串口 {port_name}: {e}")
-    
-    # ... 其他所有方法保持不变 ...
     def toggle_port(self, checked):
         self.is_port_intentionally_opened = checked
         if checked:
@@ -214,8 +206,7 @@ class SerialApp(QMainWindow):
             self.toggle_button.blockSignals(True); self.toggle_button.setChecked(True); self.toggle_button.blockSignals(False)
             self._attempt_open_port()
         else:
-            self.logger.info(f"用户请求关闭串口 {self.target_port}。")
-            self.close_serial_port()
+            self.logger.info(f"用户请求关闭串口 {self.target_port}。"); self.close_serial_port()
     def on_ports_updated(self, new_ports_list):
         if new_ports_list == self.current_ports: return
         self.logger.info(f"串口列表变化: {self.current_ports} -> {new_ports_list}")
@@ -224,8 +215,7 @@ class SerialApp(QMainWindow):
             if self.target_port in self.current_ports:
                 self.logger.info(f"检测到目标端口 {self.target_port}，尝试自动重连...")
                 self.data_display.append(f"--- [系统] 检测到目标端口 {self.target_port}，自动重连 ---")
-                self.toggle_button.blockSignals(True); self.toggle_button.setChecked(True); self.toggle_button.blockSignals(False)
-                self._attempt_open_port()
+                self.toggle_button.blockSignals(True); self.toggle_button.setChecked(True); self.toggle_button.blockSignals(False); self._attempt_open_port()
     def update_ports_display(self, new_ports_list):
         self.current_ports = new_ports_list; self.port_combo.blockSignals(True); self.port_model.clear()
         ports_to_display = set(new_ports_list)
@@ -323,13 +313,17 @@ class SerialApp(QMainWindow):
         self.data_display.append(f"--- [实时筛选已更新 | {include_part} | {exclude_part}] ---")
 
 if __name__ == '__main__':
-    logger, log_file_path = setup_logging()
-    app = QApplication(sys.argv)
+    # 【修改点3】调整启动顺序和函数调用
     settings_manager = SettingsManager()
+    logger, log_file_path = setup_logging(settings_manager.settings)
+    
+    app = QApplication(sys.argv)
+    
     default_font = QFont()
     default_font.setFamilies(["Consolas", "Monaco", "Courier New", "monospace"])
     default_font.setPointSize(settings_manager.settings['font_size'])
     app.setFont(default_font)
+
     window = SerialApp(settings_manager, logger, log_file_path)
     window.show()
     sys.exit(app.exec())
