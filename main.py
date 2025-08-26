@@ -178,7 +178,7 @@ class SerialApp(QMainWindow):
         self.logger.info("应用程序启动中...")
         
         # 设置窗口属性
-        self.setWindowTitle("串口助手 v2.5 (稳定版)")
+        self.setWindowTitle("串口助手 v2.0")
         self.setGeometry(100, 100, 700, 650)
         
         # 初始化变量
