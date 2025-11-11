@@ -497,6 +497,10 @@ class SerialApp(QMainWindow):
         # 清空所有数据
         self.log_buffer.clear()
         self.data_display.clear()
+        
+        # 重置文本格式为纯文本模式，避免HTML格式残留
+        self.data_display.setPlainText("")
+        
         self.logger.info("所有数据已被用户清空。")
     def append_data(self, text):
         # 获取当前过滤器设置
