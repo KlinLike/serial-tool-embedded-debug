@@ -11,7 +11,7 @@ from PyQt6.QtWidgets import (
     QHBoxLayout, QPushButton, QComboBox, QTextBrowser, 
     QLabel, QLineEdit, QMessageBox, QFileDialog
 )
-from PyQt6.QtCore import QThread, pyqtSignal, QObject, QDateTime, QTimer, QUrl
+from PyQt6.QtCore import QThread, pyqtSignal, QObject, QDateTime, QTimer, QUrl, Qt
 from PyQt6.QtGui import QFont, QStandardItemModel, QStandardItem, QColor, QDesktopServices
 
 # setup_logging 函数接收 settings 字典
@@ -236,6 +236,11 @@ class SerialApp(QMainWindow):
         self.toggle_button.setMinimumWidth(100)
         controls_layout.addWidget(self.toggle_button)
         
+        # 帮助按钮
+        self.help_button = QPushButton("❓ 帮助")
+        self.help_button.setToolTip("查看功能说明")
+        controls_layout.addWidget(self.help_button)
+        
         controls_layout.addStretch(1)
         
         # 波特率选择部分
@@ -260,7 +265,7 @@ class SerialApp(QMainWindow):
         include_layout = QHBoxLayout()
         include_layout.addWidget(QLabel("实时显示包含:"))
         self.include_filter_input = QLineEdit()
-        self.include_filter_input.setPlaceholderText("例如: error;warning (用';'分隔)")
+        self.include_filter_input.setPlaceholderText("例如: error;warning (用';'分隔，按回车生效)")
         include_layout.addWidget(self.include_filter_input)
         filter_group_layout.addLayout(include_layout)
         
@@ -268,7 +273,7 @@ class SerialApp(QMainWindow):
         exclude_layout = QHBoxLayout()
         exclude_layout.addWidget(QLabel("实时排除包含:"))
         self.exclude_filter_input = QLineEdit()
-        self.exclude_filter_input.setPlaceholderText("例如: debug;info (用';'分隔)")
+        self.exclude_filter_input.setPlaceholderText("例如: debug;info (用';'分隔，按回车生效)")
         exclude_layout.addWidget(self.exclude_filter_input)
         filter_group_layout.addLayout(exclude_layout)
         
@@ -319,6 +324,7 @@ class SerialApp(QMainWindow):
             self.on_ports_updated([port.device for port in serial.tools.list_ports.comports()]))
         self.toggle_button.toggled.connect(self.toggle_port)
         self.port_combo.currentTextChanged.connect(self.save_current_port_as_default)
+        self.help_button.clicked.connect(self.show_help)
         
         # 过滤器信号
         self.include_filter_input.returnPressed.connect(self.apply_filter_status)
@@ -614,6 +620,72 @@ class SerialApp(QMainWindow):
         else:
             # 如果线程没有运行，直接调用完成函数
             self.on_thread_finished()
+    def show_help(self):
+        """显示功能说明对话框"""
+        help_text = """
+<h2>串口助手 v2.0 - 功能说明</h2>
+
+<h3>📡 串口管理</h3>
+<ul>
+<li><b>自动检测设备</b>: 实时监测串口设备的插入和拔出</li>
+<li><b>自动重连</b>: 串口断开后自动检测并重新连接</li>
+<li><b>手动刷新</b>: 点击"刷新"按钮立即更新可用串口列表</li>
+<li><b>记忆功能</b>: 自动记住上次使用的串口和波特率</li>
+<li><b>多波特率支持</b>: 支持 9600 ~ 2,000,000 的多种波特率</li>
+</ul>
+
+<h3>📊 数据显示与过滤</h3>
+<ul>
+<li><b>实时数据显示</b>: 在文本框中实时显示从串口接收到的数据</li>
+<li><b>实时过滤器</b>（输入后按回车生效）:
+  <ul>
+  <li><b>包含过滤</b>: 只显示包含特定关键字的数据（支持多关键字，用 ; 分隔）</li>
+  <li><b>排除过滤</b>: 排除包含特定关键字的数据（支持多关键字，用 ; 分隔）</li>
+  </ul>
+</li>
+<li><b>历史记录筛选</b>: 对已接收的数据进行二次筛选，快速定位关键信息（输入后按回车生效）</li>
+<li><b>智能滚动控制</b>:
+  <ul>
+  <li>默认自动跟踪最新日志</li>
+  <li>向上滚动查看历史时自动暂停跟踪</li>
+  <li>滚动回底部时自动恢复跟踪</li>
+  <li>可手动点击"📌跟踪最新"按钮切换状态</li>
+  </ul>
+</li>
+</ul>
+
+<h3>📝 日志管理</h3>
+<ul>
+<li><b>自动日志保存</b>:
+  <ul>
+  <li>所有数据自动保存到 serialLog/ 文件夹</li>
+  <li>日志文件名带时间戳，便于查找</li>
+  <li>自动清理超过指定天数的旧日志（默认 3 天）</li>
+  </ul>
+</li>
+<li><b>手动导出</b>: 点击"💾 导出显示内容"将当前显示的内容导出为 txt 文件</li>
+<li><b>清空显示</b>: 点击"🗑️清空显示"一键清空屏幕显示和缓存数据</li>
+</ul>
+
+<h3>💡 使用技巧</h3>
+<ul>
+<li>使用实时过滤器可以减少屏幕刷新，提高性能</li>
+<li>历史筛选不影响原始数据，可以反复筛选</li>
+<li>完整日志已自动保存，手动导出主要用于保存筛选后的内容</li>
+<li>配置文件 config.json 可自定义字体、波特率、日志保留天数等</li>
+</ul>
+"""
+        
+        msg_box = QMessageBox(self)
+        msg_box.setWindowTitle("功能说明")
+        msg_box.setTextFormat(Qt.TextFormat.RichText)
+        msg_box.setText(help_text)
+        msg_box.setIcon(QMessageBox.Icon.Information)
+        msg_box.setStandardButtons(QMessageBox.StandardButton.Ok)
+        msg_box.exec()
+        
+        self.logger.info("用户查看了功能说明")
+    
     def apply_filter_status(self):
         """应用实时过滤器并显示状态"""
         # 获取过滤器文本
