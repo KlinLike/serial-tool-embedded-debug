@@ -178,7 +178,7 @@ class SerialApp(QMainWindow):
         self.logger.info("应用程序启动中...")
         
         # 设置窗口属性
-        self.setWindowTitle("串口助手 v2.0")
+        self.setWindowTitle("串口助手 v2.2")
         self.setGeometry(100, 100, 700, 650)
         
         # 初始化变量
@@ -229,6 +229,7 @@ class SerialApp(QMainWindow):
         
         # 刷新和打开串口按钮
         self.refresh_button = QPushButton("刷新")
+        self.refresh_button.setToolTip("手动刷新串口列表")
         controls_layout.addWidget(self.refresh_button)
         
         self.toggle_button = QPushButton("打开串口")
@@ -237,7 +238,7 @@ class SerialApp(QMainWindow):
         controls_layout.addWidget(self.toggle_button)
         
         # 帮助按钮
-        self.help_button = QPushButton("❓ 帮助")
+        self.help_button = QPushButton("帮助")
         self.help_button.setToolTip("查看功能说明")
         controls_layout.addWidget(self.help_button)
         
@@ -296,19 +297,20 @@ class SerialApp(QMainWindow):
         # 操作按钮布局
         actions_layout = QHBoxLayout()
         
-        self.clear_button = QPushButton("🗑️清空显示")
+        self.clear_button = QPushButton("清空显示")
         self.clear_button.setToolTip("清空屏幕显示的内容和缓存的所有数据")
-        self.clear_button.setMinimumWidth(120)
+        self.clear_button.setMinimumWidth(100)
         
         # 跟踪最新按钮
-        self.auto_scroll_button = QPushButton("📌跟踪最新")
+        self.auto_scroll_button = QPushButton("跟踪最新")
         self.auto_scroll_button.setCheckable(True)
         self.auto_scroll_button.setChecked(True)
         self.auto_scroll_button.setToolTip("启用后自动滚动到最新日志")
-        self.auto_scroll_button.setMinimumWidth(120)
+        self.auto_scroll_button.setMinimumWidth(100)
         
-        self.save_button = QPushButton("💾 导出显示内容")
+        self.save_button = QPushButton("导出显示内容")
         self.save_button.setToolTip("将当前显示的内容导出为txt文件（完整日志已自动保存在serialLog文件夹）")
+        self.save_button.setMinimumWidth(130)
         
         actions_layout.addWidget(self.clear_button)
         actions_layout.addWidget(self.auto_scroll_button)
@@ -630,7 +632,7 @@ class SerialApp(QMainWindow):
     def show_help(self):
         """显示功能说明对话框"""
         help_text = """
-<h2>串口助手 v2.0 - 功能说明</h2>
+<h2>串口助手 v2.2 - 功能说明</h2>
 
 <h3>📡 串口管理</h3>
 <ul>
