@@ -190,6 +190,7 @@ class SerialApp(QMainWindow):
         self.is_port_intentionally_opened = False
         self.current_ports = []
         self.is_reconnecting = False
+        self.auto_scroll_enabled = True  # 自动滚动开关
         
         # 初始化UI和端口
         self.initUI()
@@ -283,22 +284,31 @@ class SerialApp(QMainWindow):
         history_filter_layout = QHBoxLayout()
         history_filter_layout.addWidget(QLabel("筛选历史记录:"))
         self.history_filter_input = QLineEdit()
-        self.history_filter_input.setPlaceholderText("在此输入关键字，按'应用'筛选已显示内容...")
-        
-        self.apply_history_filter_button = QPushButton("应用筛选")
+        self.history_filter_input.setPlaceholderText("在此输入关键字，按回车筛选已显示内容...")
         history_filter_layout.addWidget(self.history_filter_input)
-        history_filter_layout.addWidget(self.apply_history_filter_button)
         main_layout.addLayout(history_filter_layout)
         
         # 操作按钮布局
         actions_layout = QHBoxLayout()
-        self.clear_button = QPushButton("清空所有数据")
-        self.save_visible_button = QPushButton("保存当前显示")
-        self.save_all_button = QPushButton("保存全部记录")
+        
+        self.clear_button = QPushButton("🗑️清空显示")
+        self.clear_button.setToolTip("清空屏幕显示的内容和缓存的所有数据")
+        self.clear_button.setMinimumWidth(120)
+        
+        # 跟踪最新按钮
+        self.auto_scroll_button = QPushButton("📌跟踪最新")
+        self.auto_scroll_button.setCheckable(True)
+        self.auto_scroll_button.setChecked(True)
+        self.auto_scroll_button.setToolTip("启用后自动滚动到最新日志")
+        self.auto_scroll_button.setMinimumWidth(120)
+        
+        self.save_button = QPushButton("💾 导出显示内容")
+        self.save_button.setToolTip("将当前显示的内容导出为txt文件（完整日志已自动保存在serialLog文件夹）")
         
         actions_layout.addWidget(self.clear_button)
-        actions_layout.addWidget(self.save_visible_button)
-        actions_layout.addWidget(self.save_all_button)
+        actions_layout.addWidget(self.auto_scroll_button)
+        actions_layout.addStretch(1)
+        actions_layout.addWidget(self.save_button)
         main_layout.addLayout(actions_layout)
         
         # 连接信号槽
@@ -313,13 +323,15 @@ class SerialApp(QMainWindow):
         # 过滤器信号
         self.include_filter_input.returnPressed.connect(self.apply_filter_status)
         self.exclude_filter_input.returnPressed.connect(self.apply_filter_status)
-        self.apply_history_filter_button.clicked.connect(self.refilter_display)
         self.history_filter_input.returnPressed.connect(self.refilter_display)
         
         # 数据操作信号
         self.clear_button.clicked.connect(self.clear_all_data)
-        self.save_visible_button.clicked.connect(self.save_visible_data)
-        self.save_all_button.clicked.connect(self.save_all_data)
+        self.save_button.clicked.connect(self.save_visible_data)
+        
+        # 滚动控制信号
+        self.auto_scroll_button.toggled.connect(self.toggle_auto_scroll)
+        self.data_display.verticalScrollBar().valueChanged.connect(self.on_scroll_changed)
     def _attempt_open_port(self):
         self.toggle_button.setText("关闭串口")
         self.set_controls_enabled(False)
@@ -525,10 +537,13 @@ class SerialApp(QMainWindow):
         # 检查历史记录过滤器
         history_filter_text = self.history_filter_input.text().strip()
         if not history_filter_text or history_filter_text in text:
-            # 显示数据并滚动到底部
+            # 显示数据
             self.data_display.append(text)
-            self.data_display.verticalScrollBar().setValue(
-                self.data_display.verticalScrollBar().maximum())
+            
+            # 只有在自动滚动启用时才滚动到底部
+            if self.auto_scroll_enabled:
+                self.data_display.verticalScrollBar().setValue(
+                    self.data_display.verticalScrollBar().maximum())
     def refilter_display(self):
         # 获取当前过滤器文本
         history_filter_text = self.history_filter_input.text().strip()
@@ -551,12 +566,8 @@ class SerialApp(QMainWindow):
             self.data_display.verticalScrollBar().maximum())
         QApplication.processEvents()
     def save_visible_data(self):
-        """保存当前显示的数据"""
-        self._save_content_to_file(self.data_display.toPlainText(), "visible_")
-        
-    def save_all_data(self):
-        """保存所有数据记录"""
-        self._save_content_to_file("\n".join(self.log_buffer), "all_")
+        """导出当前显示的内容"""
+        self._save_content_to_file(self.data_display.toPlainText(), "")
         
     def _save_content_to_file(self, content, prefix=""):
         """将内容保存到文件"""
@@ -624,6 +635,37 @@ class SerialApp(QMainWindow):
         
         # 显示过滤器状态
         self.data_display.append(f"--- [实时筛选已更新 | {include_part} | {exclude_part}] ---")
+    
+    def toggle_auto_scroll(self, checked):
+        """切换自动滚动状态"""
+        self.auto_scroll_enabled = checked
+        if checked:
+            # 启用自动滚动时，立即滚动到底部
+            self.data_display.verticalScrollBar().setValue(
+                self.data_display.verticalScrollBar().maximum())
+            self.logger.info("自动滚动已启用")
+        else:
+            self.logger.info("自动滚动已禁用")
+    
+    def on_scroll_changed(self, value):
+        """监听滚动条变化，检测用户是否手动滚动"""
+        scrollbar = self.data_display.verticalScrollBar()
+        is_at_bottom = value >= scrollbar.maximum() - 10  # 留10像素容差
+        
+        # 如果当前在底部，但自动滚动未启用，则启用它
+        if is_at_bottom and not self.auto_scroll_enabled:
+            self.auto_scroll_enabled = True
+            self.auto_scroll_button.blockSignals(True)
+            self.auto_scroll_button.setChecked(True)
+            self.auto_scroll_button.blockSignals(False)
+            self.logger.info("用户滚动到底部，自动滚动已启用")
+        # 如果不在底部，但自动滚动已启用，则禁用它
+        elif not is_at_bottom and self.auto_scroll_enabled:
+            self.auto_scroll_enabled = False
+            self.auto_scroll_button.blockSignals(True)
+            self.auto_scroll_button.setChecked(False)
+            self.auto_scroll_button.blockSignals(False)
+            self.logger.info("检测到用户向上滚动，自动滚动已禁用")
 
 if __name__ == '__main__':
     # 初始化配置和日志系统
