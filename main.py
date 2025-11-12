@@ -289,7 +289,7 @@ class SerialApp(QMainWindow):
         history_filter_layout = QHBoxLayout()
         history_filter_layout.addWidget(QLabel("筛选历史记录:"))
         self.history_filter_input = QLineEdit()
-        self.history_filter_input.setPlaceholderText("在此输入关键字，按回车筛选已显示内容...")
+        self.history_filter_input.setPlaceholderText("例如: error;warning (用';'分隔，按回车生效)")
         history_filter_layout.addWidget(self.history_filter_input)
         main_layout.addLayout(history_filter_layout)
         
@@ -553,18 +553,25 @@ class SerialApp(QMainWindow):
     def refilter_display(self):
         # 获取当前过滤器文本
         history_filter_text = self.history_filter_input.text().strip()
-        self.logger.info(f"应用历史筛选，关键字: '{history_filter_text}'")
+        
+        # 处理关键字列表
+        keywords = [k.strip() for k in history_filter_text.split(';') if k.strip()]
+        
+        self.logger.info(f"应用历史筛选，关键字: {keywords if keywords else '无'}")
         
         # 清空当前显示
         self.data_display.clear()
         
         # 根据过滤器显示内容
-        if not history_filter_text:
+        if not keywords:
             # 无过滤器，显示所有内容
             self.data_display.setPlainText("\n".join(self.log_buffer))
         else:
-            # 有过滤器，只显示匹配的行
-            filtered_lines = [line for line in self.log_buffer if history_filter_text in line]
+            # 有过滤器，只显示包含任一关键字的行
+            filtered_lines = [
+                line for line in self.log_buffer 
+                if any(keyword in line for keyword in keywords)
+            ]
             self.data_display.setPlainText("\n".join(filtered_lines))
         
         # 滚动到底部并刷新UI
@@ -643,7 +650,7 @@ class SerialApp(QMainWindow):
   <li><b>排除过滤</b>: 排除包含特定关键字的数据（支持多关键字，用 ; 分隔）</li>
   </ul>
 </li>
-<li><b>历史记录筛选</b>: 对已接收的数据进行二次筛选，快速定位关键信息（输入后按回车生效）</li>
+<li><b>历史记录筛选</b>: 对已接收的数据进行二次筛选，快速定位关键信息（支持多关键字，用 ; 分隔，按回车生效）</li>
 <li><b>智能滚动控制</b>:
   <ul>
   <li>默认自动跟踪最新日志</li>
