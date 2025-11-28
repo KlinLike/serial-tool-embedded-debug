@@ -86,7 +86,8 @@ class SettingsManager:
                 "115200", "1000000", "2000000"
             ], 
             "default_serial_port": "",
-            "log_retention_days": 3 
+            "log_retention_days": 3,
+            "last_save_dir": ""
         }
         
         self.settings = self._load_or_create_settings()
@@ -178,7 +179,7 @@ class SerialApp(QMainWindow):
         self.logger.info("应用程序启动中...")
         
         # 设置窗口属性
-        self.setWindowTitle("串口助手 v2.2")
+        self.setWindowTitle("串口助手 v2.3")
         self.setGeometry(100, 100, 700, 650)
         
         # 初始化变量
@@ -597,10 +598,23 @@ class SerialApp(QMainWindow):
         self.logger.info(f"准备保存数据到文件: {default_filename}")
         
         # 显示保存对话框
+        initial_path = default_filename
+        last_dir = self.settings.get("last_save_dir", "")
+        try:
+            if last_dir:
+                p = Path(last_dir)
+                if p.exists():
+                    initial_path = str(p / default_filename)
+        except Exception:
+            initial_path = default_filename
         file_path, _ = QFileDialog.getSaveFileName(
-            self, "保存数据", default_filename, "Text Files (*.txt);;All Files (*)")
+            self, "保存数据", initial_path, "Text Files (*.txt);;All Files (*)")
             
         if file_path:
+            try:
+                self.settings_manager.save_setting('last_save_dir', str(Path(file_path).parent))
+            except Exception:
+                pass
             try:
                 # 尝试保存文件
                 with open(file_path, 'w', encoding='utf-8') as f:

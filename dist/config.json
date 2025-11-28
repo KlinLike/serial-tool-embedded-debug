@@ -11,5 +11,6 @@
         "2000000"
     ],
     "default_serial_port": "COM4",
-    "log_retention_days": 3
+    "log_retention_days": 3,
+    "last_save_dir": "D:\\Development\\Projects\\JLProject\\JL7Lib\\tempLog"
 }
