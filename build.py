@@ -22,9 +22,9 @@ def build_exe():
         print(f"错误: 在当前目录下找不到main.py文件: {main_py_path}")
         return False
     
-    # 构建PyInstaller命令
+    # 构建PyInstaller命令（使用当前 Python 解释器，避免 pyinstaller 不在 PATH 的问题）
     cmd = [
-        "pyinstaller",
+        sys.executable, "-m", "PyInstaller",
         "--onefile",
         "--windowed",
         "--name", "SerialTool",
